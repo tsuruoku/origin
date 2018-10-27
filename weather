@@ -1,0 +1,103 @@
+in_file = "data.csv"
+out_file = "kion10y.csv"
+
+with open(in_file, "rt", encoding="Shift_JIS") as fr:
+    lines = fr.readlines()
+    
+#ヘッダーを削いで、新たにつける
+lines = ["年,月,日,気温,品質,均質\n"] + lines[5:]
+lines = map(lambda v: v.replace('/', ','), lines)
+result = "".join(lines).strip()
+print(result)
+
+with open(out_file, "wt", encoding="utf-8") as fw:
+    fw.write(result)
+    print("saved.")
+
+#気温の平均値
+
+import pandas as pd
+
+df = pd.read_csv("kion10y.csv", encoding="utf-8")
+
+md = {}
+for i, row in df.iterrows():
+    m,  d,  v = (int(row['月']), int(row['日']), float(row['気温']))
+    key = str(m) + "/" + str(d)
+    if not(key in md): md[key] = []
+    md[key] += [v]
+    
+avs = {}
+for key in md:
+    v = avs[key] = sum(md[key]) / len(md[key]) # ---
+    print("{0} : {1}".format(key, v))
+
+#各月の平均
+
+import matplotlib.pyplot as plt
+
+df = pd.read_csv("kion10y.csv", encoding="utf-8")
+
+g = df.groupby(['月'])['気温']
+gg = g.sum() / g.count()
+
+print(gg)
+gg.plot()
+plt.savefig("tenki-heikin-tuki.png")
+plt.show()
+
+#気温が30度超を表示
+
+atui_bool = (df["気温"] > 30)
+atui = df[atui_bool]
+cnt = atui.groupby(["年"])["年"].count()
+
+print(cnt)
+cnt.plot()
+plt.savefig("tenki-over30.png")
+plt.show()
+
+#明日の気温を予測
+
+from sklearn.linear_model import LinearRegression
+import numpy as np
+
+train_year = (df["年"] <= 2016)
+test_year = (df["年"] >= 2017)
+interval = 6
+
+　#過去6日分のデータを作成
+def make_data(data):
+    x = []
+    y = []
+    temps = list(data["気温"])
+    for i in range(len(temps)):
+        if i < interval: continue
+        y.append(temps[i])
+        xa = []
+        for p in range(interval):
+            d = i + p - interval
+            xa.append(temps[d])
+        x.append(xa)
+    return (x, y)
+
+train_x, train_y = make_data(df[train_year])
+test_x, test_y = make_data(df[test_year])
+
+Ir = LinearRegression(normalize=True)
+Ir.fit(train_x, train_y)
+pre_y = Ir.predict(test_x)
+
+plt.figure(figsize=(10, 6), dpi=100)
+plt.plot(test_y, c='r')
+plt.plot(pre_y, c='b')
+plt.savefig('tenki-kion-Ir.png')
+plt.show()
+
+#評価
+
+pre_y　- test_y
+
+diff_y = abs(pre_y - test_y)
+print("average=", sum(diff_y) / len(diff_y))
+print("max=", max(diff_y)
