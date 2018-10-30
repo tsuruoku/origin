@@ -1,0 +1,56 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import Imputer
+from sklearn.feature_selection import RFE
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import SelectFromModel
+from sklearn.metrics import accuracy_score
+
+#displayで表示する際の行と列の最大値を設定
+pd.set_option('display.max_rows',500)
+pd.set_option('display.max_columns',500)
+
+#データ読み込み
+csv = pd.read_csv("../data/clinvar_conflictinga_20181020.csv", encoding="utf-8")
+df = pd.DataFrame(csv)
+X = df.iloc[:,:]
+X = X.drop('CLASS', axis=1)
+y = df.loc[:,'CLASS']
+y = pd.DataFrame(y)
+
+print('X --->')
+# display(X)
+print(X)
+print('y --->')
+# display(y)
+print(y)
+X = X.drop('CLNDN', axis=1)
+#get_dummiesでone-hotコーディングを行う
+X_ohe = pd.get_dummies(df[['CHROM','REF','ALT','MC','Allele','Consequence','IMPACT']], drop_first = True)
+
+#欠損地補完
+imp = Imputer(missing_values='NaN', strategy='mean', axis=0, verbose=0, copy=True)
+#fit,transformを同時に行う
+X_imp = imp.fit_transform(X_ohe)
+X_imp = pd.DataFrame(X_imp, columns=X_ohe.columns.values)
+
+#RFEで特徴量選択をする。
+selecter = RFE(RandomForestClassifier(n_estimators=2, random_state=1), n_features_to_select=10)
+selecter.fit(X_imp,y)
+X_selected = selecter.transform(X_imp)
+print('X_selected')
+
+X_imp_train, X_imp_test, y_train, y_test = train_test_split(X_imp, y, test_size = 0.2,train_size = 0.8,shuffle = True, random_state=42)
+                      
+scaler=StandardScaler()
+X_imp_train=scaler.fit_transform(X_imp_train)
+X_imp_test=scaler.transform(X_imp_test)
+                      
+model = RandomForestClassifier(random_state=42)
+model.fit(X_imp_train, y_train)
+
+y_pred = model.predict(X_imp_test)
+print("正解率=",accuracy_score(y_test,y_pred))
