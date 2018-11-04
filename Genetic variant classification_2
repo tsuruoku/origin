@@ -1,0 +1,117 @@
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import Imputer
+from sklearn.feature_selection import RFE
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import SelectFromModel
+from sklearn.metrics import accuracy_score
+
+#displayで表示する際の行と列の最大値を設定
+pd.set_option('display.max_rows',500)
+pd.set_option('display.max_columns',500)
+
+#データ読み込み
+csv = pd.read_csv("clinvar_conflictinga_20181020.csv", encoding="utf-8")
+df = pd.DataFrame(csv)
+
+#アンダーサンプリング
+low_frequency_data_sample = df[df["CLASS"] == 1]
+low_frequency_data_size = len(low_frequency_data_sample)
+
+high_frequency_data = df[df["CLASS"] == 0].index
+
+random_indices = np.random.choice(high_frequency_data, low_frequency_data_size, replace=False)
+
+high_frequency_data_sample = df.loc[random_indices]
+pd.DataFrame(high_frequency_data_sample)
+
+merged_data = pd.concat([high_frequency_data_sample, low_frequency_data_sample], ignore_index=True)
+balanced_data = pd.DataFrame(merged_data)
+
+df_2 = balanced_data
+#display(df_2)
+
+X = df_2.iloc[:,:]
+X_2 = X.drop('CLASS', axis=1)
+y = df_2.loc[:,'CLASS']
+y_2 = pd.DataFrame(y)
+
+print('X_2 --->')
+#display(X)
+print('y_2 --->')
+#display(y_2)
+
+X_3 = X_2.drop('CLNDN', axis=1)
+#get_dummiesでone-hotコーディングを行う
+X_ohe = pd.get_dummies(X_3[['CHROM','REF','ALT','MC','Allele','Consequence','IMPACT']], drop_first = True)
+
+#特徴量を均一にする
+merged_data_2 = pd.concat([X_ohe, y_2], axis=1)
+balanced_data_2 = pd.DataFrame(merged_data_2)
+print("balanced_data_2")
+#display(balanced_data_2)
+
+df_3 = balanced_data_2
+
+X_3 = df_3.iloc[:,:]
+X_4 = X_3.drop('CLASS', axis=1)
+X_4 = pd.DataFrame(X_4)
+y_3 = df_3.loc[:,'CLASS']
+y_3 = pd.DataFrame(y_3)
+
+print("X_3--->")
+#display(X_3)
+print("y_3--->")
+#display(y_3)
+
+
+#欠損地補完
+imp = Imputer(missing_values='NaN', strategy='mean', axis=0, verbose=0, copy=True)
+#fit,transformを同時に行う
+X_imp = imp.fit_transform(X_3)
+X_imp = pd.DataFrame(X_imp, columns=X_3.columns.values)
+
+#RFEで特徴量選択をする。
+selecter = RFE(RandomForestClassifier(n_estimators=2, random_state=1), n_features_to_select=10)
+selecter.fit(X_imp,y_3)
+X_selected = selecter.transform(X_imp)
+print('X_selected')
+
+X_selected_train, X_selected_test, y_3_train, y_3_test = train_test_split(X_selected,y_3,test_size = 0.2,train_size = 0.8,shuffle = True, 
+                                                                          random_state = 1)
+print("train")
+display(X_selected_train)
+print("test")
+display(X_selected_test)
+                      
+scaler=StandardScaler()
+X_selected_train=scaler.fit_transform(X_selected_train)
+X_selected_test=scaler.transform(X_selected_test)
+
+X_selected_train, X_selected_test, y_3_train, y_3_test = train_test_split(X_selected,y_3,test_size = 0.2,train_size = 0.8,shuffle = True,
+                                                                         random_state=1)
+                      
+scaler=StandardScaler()
+X_selected_train=scaler.fit_transform(X_selected_train)
+X_selected_test=scaler.transform(X_selected_test)
+
+import warnings
+warnings.filterwarnings('ignore')
+#10000回繰り返して1.0以外のスコアをはじき出す
+for cnt in range(10000):
+    model = RandomForestClassifier(random_state=cnt)
+    model.fit(X_selected_train, y_3_train.ravel())
+
+    y_3_pred = model.predict(X_selected_test)
+    y_3_pred = pd.Series(y_3_pred, index=y_3_test.index)
+
+    #result = pd.concat([y_3_test, y_3_pred], axis=1)
+    #print('result-------->')
+    #display(result)
+
+    score = accuracy_score(y_3_test,y_3_pred)
+    if score != 1.0:
+        print("cnt: " + str(cnt))
+        print("正解率=", score)
